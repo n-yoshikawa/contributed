@@ -36,6 +36,7 @@ extern "C" int strncasecmp(const char *s1, const char *s2, size_t n);
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <iterator>
 
 using namespace std;
 using namespace OpenBabel;
@@ -170,6 +171,11 @@ int main(int argc,char *argv[])
             // OK, now retrieve the canonical SMILES ordering for the fragment
             OBPairData *pd = dynamic_cast<OBPairData*>(fragments[i].GetData("SMILES Atom Order"));
             /*cout << "Canonical order " << pd->GetValue() << "\n";*/
+            if(pd == NULL) {
+                cerr << "pd is NULL" << endl;
+                exit(EXIT_FAILURE); // It fails!
+            }
+            cout << pd->GetValue() << endl;
             istringstream iss(pd->GetValue());
             vector<unsigned int> canonical_order;
             canonical_order.clear();
