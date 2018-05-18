@@ -49,6 +49,7 @@ int main(int argc,char *argv[])
   std::ios::sync_with_stdio(false);
 
   OBConversion conv;
+  conv.SetOptions("O", conv.OUTOPTIONS);
   OBFormat *inFormat, *canFormat;
   OBMol mol;
   ifstream ifs;
