@@ -37,6 +37,8 @@ extern "C" int strncasecmp(const char *s1, const char *s2, size_t n);
 #include <fstream>
 #include <sstream>
 #include <iterator>
+#include <queue>
+#include <map>
 
 using namespace std;
 using namespace OpenBabel;
@@ -63,7 +65,7 @@ int main(int argc,char *argv[])
   bool nonRingAtoms, nonRingBonds;
   char buffer[BUFF_SIZE];
 
-  canFormat = conv.FindFormat("can");
+  canFormat = conv.FindFormat("can"); // Canonical SMILES format
   conv.SetOutFormat(canFormat);
 
   OBSmartsPattern spiropat;
@@ -101,8 +103,9 @@ int main(int argc,char *argv[])
         mol.DeleteHydrogens(); // remove these before we do anything else
 
         // Skip molecules with spiro atoms
+        // Wikipedia: The common atom that connects the two (or sometimes three) rings is called the spiro atom
         spiropat.Match(mol);
-        vector<vector<int> > maplist = spiropat.GetUMapList();
+        vector<vector<int> > maplist = spiropat.GetUMapList(); // the entire list of unique matches for this pattern
         bool is_spiro = false;
         for (vector<vector<int> >::iterator i = maplist.begin(); i != maplist.end(); ++i) {
           int candidate = (*i)[0];
@@ -113,6 +116,7 @@ int main(int argc,char *argv[])
         }
         if (is_spiro) continue;
 
+        // Delete non ring atoms
         do {
           nonRingAtoms = false;
           size = mol.NumAtoms();
@@ -136,6 +140,7 @@ int main(int argc,char *argv[])
         if (mol.NumBonds() == 0)
           continue;
         
+        // delete non ring bonds
         do {
           nonRingBonds = false;
           size = mol.NumBonds();
@@ -150,13 +155,13 @@ int main(int argc,char *argv[])
             }        
         } while (nonRingBonds);
 
-        fragments = mol.Separate();
+        fragments = mol.Separate(); // Copies each disconnected fragment as a separate
         for (unsigned int i = 0; i < fragments.size(); ++i)
           {
             if (fragments[i].NumAtoms() < 3) // too small to care
               continue;
               
-            currentCAN = conv.WriteString(&fragments[i], true);
+            currentCAN = conv.WriteString(&fragments[i], true); // 2nd arg is trimWhitespace
             currentSMARTS = RewriteSMILES(currentCAN); // change elements to "a/A" for compression
             std::stringstream stitle;
             stitle << currentSMARTS << "\t" << fragments[i].NumAtoms() << "\t" << fragments[i].NumBonds();
@@ -173,8 +178,8 @@ int main(int argc,char *argv[])
             OBPairData *pd = dynamic_cast<OBPairData*>(fragments[i].GetData("SMILES Atom Order"));
             /*cout << "Canonical order " << pd->GetValue() << "\n";*/
             if(pd == NULL) {
-                cerr << "pd is NULL" << endl;
-                exit(EXIT_FAILURE); // It fails!
+                cerr << "Failed to retrieve canonical SMILES" << endl;
+                continue;
             }
             cout << pd->GetValue() << endl;
             istringstream iss(pd->GetValue());
@@ -191,8 +196,8 @@ int main(int argc,char *argv[])
             unsigned int order;
             OBAtom *atom;
 
-            fragments[i].Center();
-            fragments[i].ToInertialFrame();
+            fragments[i].Center(); // Translate to the center of all coordinates
+            fragments[i].ToInertialFrame(); // Translate all conformers to the inertial frame-of-reference.
 
             for (unsigned int index = 0; index < canonical_order.size(); 
                  ++index) {
@@ -206,10 +211,10 @@ int main(int argc,char *argv[])
 
           }
         fragments.clear();
-        if (index.size() > fragmentCount) {
+        /*if (index.size() > fragmentCount) {
           fragmentCount = index.size();
           cerr << " Fragments: " << fragmentCount << endl;
-        }
+        }*/
 
       } // while reading molecules (in this file)
     ifs.close();
@@ -217,9 +222,20 @@ int main(int argc,char *argv[])
   } // while reading files
 
   // loop through the map and output frequencies
+  priority_queue<pair<int, string> > freq;
+  int total = 0;
   map<string, int>::const_iterator indexItr;
   for (indexItr = index.begin(); indexItr != index.end(); ++indexItr) {
-    cerr << (*indexItr).second << " INDEX " << (*indexItr).first << "\n";
+      freq.push(make_pair((*indexItr).second, (*indexItr).first));
+      total += (*indexItr).second;
+  }
+  for(int i = 0; i < 10; ++i) {
+      pair<int, string> f = freq.top();
+      freq.pop();
+      stringstream ss(f.second);
+      string smarts;
+      ss >> smarts;
+      cerr << smarts << "\t" << 100.0*f.first/total << "\n";
   }
     
   return(0);
@@ -244,7 +260,7 @@ string RewriteSMILES(const string smiles)
 
   // NOTE: You must replace the two-letter elements first
   // (since the one-letter elements would match too, e.g. C replacing Cl)
-  FindAndReplace(fragment, "[Cl]", "A");
+  /*FindAndReplace(fragment, "[Cl]", "A");
   FindAndReplace(fragment, "[Se]", "A");
   FindAndReplace(fragment, "[Br]", "A");
   FindAndReplace(fragment, "[Al]", "A");
@@ -279,7 +295,7 @@ string RewriteSMILES(const string smiles)
   FindAndReplace(fragment, "n", "a");
   FindAndReplace(fragment, "o", "a");
   FindAndReplace(fragment, "p", "a");
-  FindAndReplace(fragment, "s", "a");
+  FindAndReplace(fragment, "s", "a");*/
 
   // There are probably other elements which might be ignored, but these are rare
   // (i.e., unlikely to be top ring fragment hits)
