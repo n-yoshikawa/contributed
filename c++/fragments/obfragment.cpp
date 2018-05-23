@@ -99,70 +99,49 @@ int main(int argc,char *argv[])
     while(ifs.peek() != EOF && ifs.good())
       {
         conv.Read(&mol, &ifs);
-        //if (!mol.Has3D()) continue; // invalid coordinates!
-        mol.DeleteHydrogens(); // remove these before we do anything else
 
         // Skip molecules with spiro atoms
-        // Wikipedia: The common atom that connects the two (or sometimes three) rings is called the spiro atom
         spiropat.Match(mol);
-        vector<vector<int> > maplist = spiropat.GetUMapList(); // the entire list of unique matches for this pattern
+        vector<vector<int> > maplist = spiropat.GetUMapList();
         bool is_spiro = false;
         for (vector<vector<int> >::iterator i = maplist.begin(); i != maplist.end(); ++i) {
           int candidate = (*i)[0];
           unsigned long atomid = mol.GetAtom(candidate)->GetId();
           is_spiro = OpenBabel::OBBuilder::IsSpiroAtom(atomid, mol);
-          //cout << candidate << " " << atomid << " " << is_spiro << endl;
           if (is_spiro) break;
         }
         if (is_spiro) continue;
 
-        // Delete non ring atoms
-        do {
-          nonRingAtoms = false;
-          size = mol.NumAtoms();
-          for (unsigned int i = 1; i <= size; ++i)
-            {
-              atom = mol.GetAtom(i);
-              if (!atom->IsInRing()) {
-                mol.DeleteAtom(atom);
-                nonRingAtoms = true;
-                break; // don't know how many atoms there are
-              } 
-              // Previously, we changed atoms to carbon here.
-              // Now we perform this alchemy in terms of string-rewriting
-              // once the canonical SMILES is generated
+        // Select ring atoms
+        OBBitVec atomsToCopy;
+        size = mol.NumAtoms();
+        for (unsigned int i = 1; i <= size; ++i) {
+            atom = mol.GetAtom(i);
+            if (atom->IsInRing()) {
+                atomsToCopy.SetBitOn(atom->GetIdx());
+            } 
+        }
+        
+        // Select non ring bonds
+        OBBitVec bondsToExclude;
+        size = mol.NumBonds();
+        for (unsigned int i = 0; i < size; ++i) {
+            bond = mol.GetBond(i);
+            if (!bond->IsInRing()) {
+                bondsToExclude.SetBitOn(bond->GetIdx());
             }
-        } while (nonRingAtoms);
-        
-        if (mol.NumAtoms() < 3)
-          continue;
-        
-        if (mol.NumBonds() == 0)
-          continue;
-        
-        // delete non ring bonds
-        do {
-          nonRingBonds = false;
-          size = mol.NumBonds();
-          for (unsigned int i = 0; i < size; ++i)
-            {
-              bond = mol.GetBond(i);
-              if (!bond->IsInRing()) {
-                mol.DeleteBond(bond);
-                nonRingBonds = true;
-                break; // don't know how many bonds there are
-              }
-            }        
-        } while (nonRingBonds);
+        }
 
-        fragments = mol.Separate(); // Copies each disconnected fragment as a separate
+        OBMol mol_copy;
+        mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
+        fragments = mol_copy.Separate(); // Copies each disconnected fragment as a separate
         for (unsigned int i = 0; i < fragments.size(); ++i)
           {
             if (fragments[i].NumAtoms() < 3) // too small to care
               continue;
               
             currentCAN = conv.WriteString(&fragments[i], true); // 2nd arg is trimWhitespace
-            currentSMARTS = RewriteSMILES(currentCAN); // change elements to "a/A" for compression
+            currentSMARTS = currentCAN;
             std::stringstream stitle;
             stitle << currentSMARTS << "\t" << fragments[i].NumAtoms() << "\t" << fragments[i].NumBonds();
             std::string title = stitle.str();
@@ -239,84 +218,4 @@ int main(int argc,char *argv[])
   }
     
   return(0);
-}
-
-// Replace all instances of a string pattern with another
-// (This should be part of the STL, but isn't, sadly.)
-void FindAndReplace( string &source, const string find, const string replace )
- {
-	 size_t j;
-	 for ( ; (j = source.find( find )) != string::npos ; ) {
-		 source.replace( j, find.length(), replace );
-	 }
- }
-
-string RewriteSMILES(const string smiles)
-{
-  string fragment = smiles;
-  
-  // This is a bit tedious -- we must place all atom types here
-  // It would be much easier with a regex
-
-  // NOTE: You must replace the two-letter elements first
-  // (since the one-letter elements would match too, e.g. C replacing Cl)
-  /*FindAndReplace(fragment, "[Cl]", "A");
-  FindAndReplace(fragment, "[Se]", "A");
-  FindAndReplace(fragment, "[Br]", "A");
-  FindAndReplace(fragment, "[Al]", "A");
-  FindAndReplace(fragment, "[Si]", "A");
-  FindAndReplace(fragment, "[As]", "A");
-  FindAndReplace(fragment, "[Li]", "A");
-  FindAndReplace(fragment, "[Na]", "A");
-  FindAndReplace(fragment, "[Mg]", "A");
-  FindAndReplace(fragment, "[Ca]", "A");
-  FindAndReplace(fragment, "[Cr]", "A");
-  FindAndReplace(fragment, "[Mn]", "A");
-  FindAndReplace(fragment, "[Fe]", "A");
-  FindAndReplace(fragment, "[Co]", "A");
-  FindAndReplace(fragment, "[Ni]", "A");
-  FindAndReplace(fragment, "[Zn]", "A");
-  FindAndReplace(fragment, "[Cu]", "A");
-  FindAndReplace(fragment, "B", "A");
-  FindAndReplace(fragment, "C", "A");
-  FindAndReplace(fragment, "N", "A");
-  FindAndReplace(fragment, "O", "A");
-  FindAndReplace(fragment, "F", "A");
-  FindAndReplace(fragment, "P", "A");
-  FindAndReplace(fragment, "S", "A");
-  FindAndReplace(fragment, "I", "A");
-  FindAndReplace(fragment, "K", "A");
-  
-  // And now some aromatics
-  FindAndReplace(fragment, "[si]", "a");
-  FindAndReplace(fragment, "[se]", "a");
-  FindAndReplace(fragment, "b", "a");
-  FindAndReplace(fragment, "c", "a");
-  FindAndReplace(fragment, "n", "a");
-  FindAndReplace(fragment, "o", "a");
-  FindAndReplace(fragment, "p", "a");
-  FindAndReplace(fragment, "s", "a");*/
-
-  // There are probably other elements which might be ignored, but these are rare
-  // (i.e., unlikely to be top ring fragment hits)
-
-  return fragment;
-
-  /* We might want to add ~ for bonds -- maybe add the fragment and also a "backup" with ~ for bonds?
-  FindAndReplace(fragment, "=", "~");
-  FindAndReplace(fragment, "#", "~");
-
-  // Add ~ where missing bonds (i.e., rather than single vs. aromatic)
-  stringstream result;
-  for(unsigned int i = 0; i < fragment.length(); ++i) {
-    result << fragment[i];
-    // if we haven't output a ~ bond, look for A or a ahead
-    if (i + 1 < fragment.length()
-        && fragment[i] != '~'
-        && (fragment[i+1] == 'a' || fragment[i+1] == 'A'))
-      result << "~";
-  }
-
-  return result.str();
-  */
 }
