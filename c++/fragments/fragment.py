@@ -25,7 +25,7 @@ if __name__ == "__main__":
         ok = CopyRingSystem(mol.OBMol, copied)
         assert ok
         if copied.NumAtoms() > 0:
-            smi = pybel.Molecule(copied).write("smi").rstrip()
+            smi = pybel.Molecule(copied).write("can").rstrip()
             for f in smi.split("."):
                 if f in fragments:
                     fragments[f] += 1
