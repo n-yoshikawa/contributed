@@ -99,6 +99,7 @@ int main(int argc,char *argv[])
     while(ifs.peek() != EOF && ifs.good())
       {
         conv.Read(&mol, &ifs);
+        mol.AddHydrogens();
 
         // Skip molecules with spiro atoms
         spiropat.Match(mol);
@@ -112,8 +113,10 @@ int main(int argc,char *argv[])
         }
         if (is_spiro) continue;
 
+        
+        /*
         // Select ring atoms
-        OBBitVec atomsToCopy;
+        atomsToCopy.Clear();
         size = mol.NumAtoms();
         for (unsigned int i = 1; i <= size; ++i) {
             atom = mol.GetAtom(i);
@@ -121,14 +124,31 @@ int main(int argc,char *argv[])
                 atomsToCopy.SetBitOn(atom->GetIdx());
             } 
         }
-        
         // Select non ring bonds
-        OBBitVec bondsToExclude;
+        bondsToExclude.Clear();
         size = mol.NumBonds();
         for (unsigned int i = 0; i < size; ++i) {
             bond = mol.GetBond(i);
             if (!bond->IsInRing()) {
                 bondsToExclude.SetBitOn(bond->GetIdx());
+            }
+        }
+        */
+
+        OBBitVec atomsToCopy, bondsToExclude;
+        size = mol.NumAtoms();
+        for (unsigned int i = 1; i <= size; ++i) {
+            atom = mol.GetAtom(i);
+            atomsToCopy.SetBitOn(atom->GetIdx());
+        }
+
+        size = mol.NumBonds();
+        for (unsigned int i = 0; i < size; ++i) {
+            bond = mol.GetBond(i);
+            if (bond->IsRotor()) {
+                bondsToExclude.SetBitOn(bond->GetIdx());
+                OBAtom* begin = bond->GetBeginAtom();
+                OBAtom* end = bond->GetEndAtom();
             }
         }
 
@@ -137,7 +157,7 @@ int main(int argc,char *argv[])
         fragments = mol_copy.Separate(); // Copies each disconnected fragment as a separate
         for (unsigned int i = 0; i < fragments.size(); ++i)
           {
-            if (fragments[i].NumAtoms() < 3) // too small to care
+            if (fragments[i].NumHvyAtoms() < 3) // too small to care
               continue;
               
             currentCAN = conv.WriteString(&fragments[i], true); // 2nd arg is trimWhitespace
@@ -190,10 +210,6 @@ int main(int argc,char *argv[])
 
           }
         fragments.clear();
-        /*if (index.size() > fragmentCount) {
-          fragmentCount = index.size();
-          cerr << " Fragments: " << fragmentCount << endl;
-        }*/
 
       } // while reading molecules (in this file)
     ifs.close();
@@ -208,13 +224,14 @@ int main(int argc,char *argv[])
       freq.push(make_pair((*indexItr).second, (*indexItr).first));
       total += (*indexItr).second;
   }
-  for(int i = 0; i < 10; ++i) {
+  for(int i = 0; i < 25; ++i) {
+      if(freq.empty()) break;
       pair<int, string> f = freq.top();
       freq.pop();
       stringstream ss(f.second);
       string smarts;
       ss >> smarts;
-      cerr << smarts << "\t" << 100.0*f.first/total << "\n";
+      cerr << f.second << "\t" << 100.0*f.first/total << "\n";
   }
     
   return(0);
