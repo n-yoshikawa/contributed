@@ -126,6 +126,7 @@ int main(int argc,char *argv[]) {
                     }
                 }
             }
+            // display which atom is in fragment
             for(size_t i = 1; i < mol.NumAtoms()+1; ++i) {
                 cout << (in_frag.BitIsSet(i) ? 1 : 0) << endl;
             }
