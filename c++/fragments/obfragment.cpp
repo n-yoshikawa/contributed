@@ -135,20 +135,19 @@ int main(int argc,char *argv[])
         }
         */
 
-        OBBitVec atomsToCopy, bondsToExclude;
         size = mol.NumAtoms();
+        OBBitVec atomsToCopy(size+1);
         for (unsigned int i = 1; i <= size; ++i) {
             atom = mol.GetAtom(i);
             atomsToCopy.SetBitOn(atom->GetIdx());
         }
 
         size = mol.NumBonds();
+        OBBitVec bondsToExclude(size);
         for (unsigned int i = 0; i < size; ++i) {
             bond = mol.GetBond(i);
             if (bond->IsRotor()) {
                 bondsToExclude.SetBitOn(bond->GetIdx());
-                OBAtom* begin = bond->GetBeginAtom();
-                OBAtom* end = bond->GetEndAtom();
             }
         }
 
@@ -159,8 +158,9 @@ int main(int argc,char *argv[])
           {
             if (fragments[i].NumHvyAtoms() < 3) // too small to care
               continue;
+            //fragments[i].AddHydrogens();
               
-            currentCAN = conv.WriteString(&fragments[i], true); // 2nd arg is trimWhitespace
+            currentCAN = conv.WriteString(&fragments[i], true);
             currentSMARTS = currentCAN;
             std::stringstream stitle;
             stitle << currentSMARTS << "\t" << fragments[i].NumAtoms() << "\t" << fragments[i].NumBonds();
@@ -210,6 +210,10 @@ int main(int argc,char *argv[])
 
           }
         fragments.clear();
+        if (index.size() > fragmentCount) {
+          fragmentCount = index.size();
+          cerr << " Fragments: " << fragmentCount << endl;
+        }
 
       } // while reading molecules (in this file)
     ifs.close();
@@ -217,7 +221,12 @@ int main(int argc,char *argv[])
   } // while reading files
 
   // loop through the map and output frequencies
-  priority_queue<pair<int, string> > freq;
+  map<string, int>::const_iterator indexItr;
+  for (indexItr = index.begin(); indexItr != index.end(); ++indexItr) {
+      cerr << (*indexItr).second << " INDEX " << (*indexItr).first << "\n";
+  }
+
+  /*priority_queue<pair<int, string> > freq;
   int total = 0;
   map<string, int>::const_iterator indexItr;
   for (indexItr = index.begin(); indexItr != index.end(); ++indexItr) {
@@ -232,7 +241,7 @@ int main(int argc,char *argv[])
       string smarts;
       ss >> smarts;
       cerr << f.second << "\t" << 100.0*f.first/total << "\n";
-  }
+  }*/
     
   return(0);
 }
