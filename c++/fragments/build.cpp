@@ -85,28 +85,45 @@ int main(int argc,char *argv[]) {
                 }
             }
 
-            cout << "1" << endl;
 
             OBMol mol_copy;
             mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
             vector<OBMol> fragments = mol_copy.Separate(); // Copies each disconnected fragment as a separate
-            cout << "2" << endl;
+            OBBitVec in_frag(mol.NumAtoms()); // Is the atoms in fragment?
+            cout << "Original: " << conv.WriteString(&mol, true) << endl;
             for (unsigned int i = 0; i < fragments.size(); ++i) {
-                cout << "3" << endl;
                 string fragment_smiles = conv.WriteString(&fragments[i], true);
-                cout << "4" << endl;
-                cout << "Search: " << fragment_smiles << endl;
+
+                // need better search method
                 if (find(known_fragments.begin(), known_fragments.end(), 
-                         fragment_smiles) == known_fragments.end()) {
-                    cout << "5" << endl;
+                         fragment_smiles) == known_fragments.end()) { 
                     cout << "Not found: " << fragment_smiles << endl;
+                    continue;
                 } else {
-                    cout << "6" << endl;
                     cout << "Found: " << fragment_smiles << endl;
+
+                    // This search may be eliminated?
+                    OBSmartsPattern sp;
+                    sp.Init(fragment_smiles);
+                    sp.Match(mol);
+
+                    vector<vector<int> > mlist; // match list for fragments
+                    mlist = sp.GetUMapList();
+
+                    vector<vector<int> >::iterator j;
+                    for (j = mlist.begin();j != mlist.end();++j) { // for all matches
+                        vector<int>::iterator k;
+                        for(k = j->begin(); k != j->end(); ++k) {
+                            in_frag.SetBitOn(*k);
+                            cout << *k << " ";
+                        }
+                        cout << endl;
+                    }
                 }
+            }
+            for(size_t i = 1; i < mol.NumAtoms()+1; ++i) {
+                cout << (in_frag.BitIsSet(i) ? 1 : 0) << endl;
             }
         }
     }
 }
-
-
