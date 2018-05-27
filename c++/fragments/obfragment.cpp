@@ -50,7 +50,7 @@ int main(int argc,char *argv[])
   // turn off slow sync with C-style output (we don't use it anyway).
   std::ios::sync_with_stdio(false);
 
-  OBConversion conv;
+  OBConversion conv, conv_sdf;
   conv.SetOptions("O", conv.OUTOPTIONS);
   OBFormat *inFormat, *canFormat;
   OBMol mol;
@@ -67,9 +67,8 @@ int main(int argc,char *argv[])
 
   canFormat = conv.FindFormat("can"); // Canonical SMILES format
   conv.SetOutFormat(canFormat);
-
-  OBSmartsPattern spiropat;
-  spiropat.Init("[x4]");
+  canFormat = conv.FindFormat("sdf");
+  conv_sdf.SetOutFormat(canFormat);
 
   if (argc < 2)
     {
@@ -101,40 +100,6 @@ int main(int argc,char *argv[])
         conv.Read(&mol, &ifs);
         mol.AddHydrogens();
 
-        // Skip molecules with spiro atoms
-        spiropat.Match(mol);
-        vector<vector<int> > maplist = spiropat.GetUMapList();
-        bool is_spiro = false;
-        for (vector<vector<int> >::iterator i = maplist.begin(); i != maplist.end(); ++i) {
-          int candidate = (*i)[0];
-          unsigned long atomid = mol.GetAtom(candidate)->GetId();
-          is_spiro = OpenBabel::OBBuilder::IsSpiroAtom(atomid, mol);
-          if (is_spiro) break;
-        }
-        if (is_spiro) continue;
-
-        
-        /*
-        // Select ring atoms
-        atomsToCopy.Clear();
-        size = mol.NumAtoms();
-        for (unsigned int i = 1; i <= size; ++i) {
-            atom = mol.GetAtom(i);
-            if (atom->IsInRing()) {
-                atomsToCopy.SetBitOn(atom->GetIdx());
-            } 
-        }
-        // Select non ring bonds
-        bondsToExclude.Clear();
-        size = mol.NumBonds();
-        for (unsigned int i = 0; i < size; ++i) {
-            bond = mol.GetBond(i);
-            if (!bond->IsInRing()) {
-                bondsToExclude.SetBitOn(bond->GetIdx());
-            }
-        }
-        */
-
         size = mol.NumAtoms();
         OBBitVec atomsToCopy(size+1);
         for (unsigned int i = 1; i <= size; ++i) {
@@ -158,7 +123,7 @@ int main(int argc,char *argv[])
           {
             if (fragments[i].NumHvyAtoms() < 3) // too small to care
               continue;
-            //fragments[i].AddHydrogens();
+            fragments[i].AddHydrogens();
               
             currentCAN = conv.WriteString(&fragments[i], true);
             currentSMARTS = currentCAN;
@@ -180,7 +145,7 @@ int main(int argc,char *argv[])
                 cerr << "Failed to retrieve canonical SMILES" << endl;
                 continue;
             }
-            cout << pd->GetValue() << endl;
+            //cout << pd->GetValue() << endl;
             istringstream iss(pd->GetValue());
             vector<unsigned int> canonical_order;
             canonical_order.clear();
@@ -189,8 +154,8 @@ int main(int argc,char *argv[])
                  back_inserter<vector<unsigned int> >(canonical_order));
 
             // Write out an XYZ-style file with the CANSMI as the title
-            cout << fragments[i].NumAtoms() << '\n';
-            cout << stitle.str() << '\n'; // endl causes a flush
+            //cout << fragments[i].NumAtoms() << '\n';
+            //cout << stitle.str() << '\n'; // endl causes a flush
 
             unsigned int order;
             OBAtom *atom;
@@ -198,7 +163,7 @@ int main(int argc,char *argv[])
             fragments[i].Center(); // Translate to the center of all coordinates
             fragments[i].ToInertialFrame(); // Translate all conformers to the inertial frame-of-reference.
 
-            for (unsigned int index = 0; index < canonical_order.size(); 
+            /*for (unsigned int index = 0; index < canonical_order.size(); 
                  ++index) {
               order = canonical_order[index];
               atom = fragments[i].GetAtom(order);
@@ -206,8 +171,9 @@ int main(int argc,char *argv[])
               snprintf(buffer, BUFF_SIZE, "C %9.3f %9.3f %9.3f\n",
                        atom->x(), atom->y(), atom->z());
               cout << buffer;
-            }
-
+            }*/
+            currentCAN = conv.WriteString(&fragments[i], true);
+            cout << conv_sdf.WriteString(&fragments[i], true) << endl;
           }
         fragments.clear();
         if (index.size() > fragmentCount) {

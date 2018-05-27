@@ -18,13 +18,19 @@
 using namespace std;
 using namespace OpenBabel;
 
-vector<string> LoadFragments() {
-    ifstream ifs("fragments.txt");
-    string line;
-    vector<string> fragments;
+vector<pair<string, OBMol> > LoadFragments() {
+    OBConversion conv;
+    conv.SetInFormat("sdf");
+    conv.SetOutFormat("can");
+    OBMol mol;
+    vector<pair<string, OBMol> > fragments;
 
-    while(ifs && getline(ifs, line)) {
-        fragments.push_back(line);
+    bool notatend = conv.ReadFile(&mol, "fragments.sdf");
+    while(notatend) {
+        string smiles = conv.WriteString(&mol, true);
+        fragments.push_back(make_pair(smiles, mol));
+        mol.Clear();
+        notatend = conv.Read(&mol);
     }
     return fragments;
 }
@@ -47,7 +53,7 @@ int main(int argc,char *argv[]) {
     OBMol mol;
     ifstream ifs;
 
-    vector<string> known_fragments = LoadFragments();
+    vector<pair<string, OBMol> > known_fragments = LoadFragments();
 
     for (int i = 1; i < argc; i++) {
         cerr << "Reading file " << argv[i] << endl;
@@ -95,29 +101,28 @@ int main(int argc,char *argv[]) {
                 string fragment_smiles = conv.WriteString(&fragments[i], true);
 
                 // need better search method
-                if (find(known_fragments.begin(), known_fragments.end(), 
-                         fragment_smiles) == known_fragments.end()) { 
-                    cout << "Not found: " << fragment_smiles << endl;
-                    continue;
-                } else {
-                    cout << "Found: " << fragment_smiles << endl;
+                vector<pair<string, OBMol> >::iterator f;
+                for(f = known_fragments.begin(); f != known_fragments.end(); f++) {
+                    if((*f).first == fragment_smiles) {
+                        cout << "Found: " << fragment_smiles << endl;
 
-                    // This search may be eliminated?
-                    OBSmartsPattern sp;
-                    sp.Init(fragment_smiles);
-                    sp.Match(mol);
+                        // This search may be eliminated?
+                        OBSmartsPattern sp;
+                        sp.Init(fragment_smiles);
+                        sp.Match(mol);
 
-                    vector<vector<int> > mlist; // match list for fragments
-                    mlist = sp.GetUMapList();
+                        vector<vector<int> > mlist; // match list for fragments
+                        mlist = sp.GetUMapList();
 
-                    vector<vector<int> >::iterator j;
-                    for (j = mlist.begin();j != mlist.end();++j) { // for all matches
-                        vector<int>::iterator k;
-                        for(k = j->begin(); k != j->end(); ++k) {
-                            in_frag.SetBitOn(*k);
-                            cout << *k << " ";
+                        vector<vector<int> >::iterator j;
+                        for (j = mlist.begin();j != mlist.end();++j) { // for all matches
+                            vector<int>::iterator k;
+                            for(k = j->begin(); k != j->end(); ++k) {
+                                in_frag.SetBitOn(*k);
+                                cout << *k << " ";
+                            }
+                            cout << endl;
                         }
-                        cout << endl;
                     }
                 }
             }
