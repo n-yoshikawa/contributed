@@ -27,6 +27,7 @@ GNU General Public License for more details.
 #include <openbabel/graphsym.h>
 #include <openbabel/builder.h>
 #include <openbabel/parsmart.h>
+#include <openbabel/data.h>
 
 #if !HAVE_STRNCASECMP
 extern "C" int strncasecmp(const char *s1, const char *s2, size_t n);
@@ -62,7 +63,6 @@ int main(int argc,char *argv[])
   unsigned int size;
   OBAtom *atom;
   OBBond *bond;
-  bool nonRingAtoms, nonRingBonds;
   char buffer[BUFF_SIZE];
 
   canFormat = conv.FindFormat("can"); // Canonical SMILES format
@@ -98,7 +98,7 @@ int main(int argc,char *argv[])
     while(ifs.peek() != EOF && ifs.good())
       {
         conv.Read(&mol, &ifs);
-        mol.AddHydrogens();
+        mol.DeleteHydrogens();
 
         size = mol.NumAtoms();
         OBBitVec atomsToCopy(size+1);
@@ -121,9 +121,8 @@ int main(int argc,char *argv[])
         fragments = mol_copy.Separate(); // Copies each disconnected fragment as a separate
         for (unsigned int i = 0; i < fragments.size(); ++i)
           {
-            if (fragments[i].NumHvyAtoms() < 3) // too small to care
+            if (fragments[i].NumAtoms() < 3) // too small to care
               continue;
-            fragments[i].AddHydrogens();
               
             currentCAN = conv.WriteString(&fragments[i], true);
             currentSMARTS = currentCAN;
@@ -141,11 +140,6 @@ int main(int argc,char *argv[])
             // OK, now retrieve the canonical SMILES ordering for the fragment
             OBPairData *pd = dynamic_cast<OBPairData*>(fragments[i].GetData("SMILES Atom Order"));
             /*cout << "Canonical order " << pd->GetValue() << "\n";*/
-            if(pd == NULL) {
-                cerr << "Failed to retrieve canonical SMILES" << endl;
-                continue;
-            }
-            //cout << pd->GetValue() << endl;
             istringstream iss(pd->GetValue());
             vector<unsigned int> canonical_order;
             canonical_order.clear();
@@ -156,6 +150,7 @@ int main(int argc,char *argv[])
             // Write out an XYZ-style file with the CANSMI as the title
             //cout << fragments[i].NumAtoms() << '\n';
             //cout << stitle.str() << '\n'; // endl causes a flush
+            cout << currentSMARTS << '\n'; // endl causes a flush
 
             unsigned int order;
             OBAtom *atom;
@@ -163,17 +158,16 @@ int main(int argc,char *argv[])
             fragments[i].Center(); // Translate to the center of all coordinates
             fragments[i].ToInertialFrame(); // Translate all conformers to the inertial frame-of-reference.
 
-            /*for (unsigned int index = 0; index < canonical_order.size(); 
+            for (unsigned int index = 0; index < canonical_order.size(); 
                  ++index) {
               order = canonical_order[index];
               atom = fragments[i].GetAtom(order);
               
-              snprintf(buffer, BUFF_SIZE, "C %9.3f %9.3f %9.3f\n",
+              snprintf(buffer, BUFF_SIZE, "%d %9.3f %9.3f %9.3f\n",
+                       atom->GetAtomicNum(),
                        atom->x(), atom->y(), atom->z());
               cout << buffer;
-            }*/
-            currentCAN = conv.WriteString(&fragments[i], true);
-            cout << conv_sdf.WriteString(&fragments[i], true) << endl;
+            }
           }
         fragments.clear();
         if (index.size() > fragmentCount) {

@@ -44,25 +44,48 @@ vector3 GetCorrectedBondVector(OBAtom *atom1, OBAtom *atom2, int bondOrder = 1)
     return OBBuilder::GetNewBondVector(atom1, bondLength);
   }
 
-vector<pair<string, OBMol> > LoadFragments() {
-  OBConversion conv;
-  conv.SetInFormat("sdf");
-  conv.SetOutFormat("can");
-  OBMol mol;
-  vector<pair<string, OBMol> > fragments;
+vector<pair<OBSmartsPattern*, vector<vector3> > > known_fragments;
 
-  bool notatend = conv.ReadFile(&mol, "fragments.sdf");
-  while(notatend) {
-    string smiles = conv.WriteString(&mol, true);
-    fragments.push_back(make_pair(smiles, mol));
-    mol.Clear();
-    notatend = conv.Read(&mol);
+void LoadFragments() {
+  ifstream ifs("fragments-sort.txt");
+  if(!ifs) {
+    cerr << "Falied to open fragments.txt" << endl;
+    exit(EXIT_FAILURE);
   }
-  return fragments;
+
+  char buffer[BUFF_SIZE];
+  vector<string> vs;
+  OBSmartsPattern *sp = NULL;
+  vector<vector3> coords;
+  while (ifs.getline(buffer, BUFF_SIZE)) {
+    if (buffer[0] == '#')
+      continue;
+
+    tokenize(vs, buffer);
+
+    if (vs.size() == 1) { // SMARTS pattern
+      if (sp != NULL)
+        known_fragments.push_back(pair<OBSmartsPattern*, vector<vector3> > (sp, coords));
+
+      coords.clear();
+      sp = new OBSmartsPattern;
+      if (!sp->Init(vs[0])) {
+        delete sp;
+        sp = NULL;
+        obErrorLog.ThrowError(__FUNCTION__, " Could not parse SMARTS from contribution data file", obInfo);
+      }
+    } else if (vs.size() == 3) { // XYZ coordinates
+      vector3 coord(atof(vs[0].c_str()), atof(vs[0].c_str()), atof(vs[0].c_str()));
+      coords.push_back(coord);
+    } else {
+      cerr << "Unexpected input" << endl;
+      exit(EXIT_FAILURE);
+    }
+  }
+  known_fragments.push_back(pair<OBSmartsPattern*, vector<vector3> > (sp, coords));
 }
 
 int main(int argc,char *argv[]) {
-  std::ios::sync_with_stdio(false);
 
   if (argc < 1) {
     cout << "Usage: " << argv[0] << " <file>" << endl;
@@ -75,10 +98,9 @@ int main(int argc,char *argv[]) {
   conv.SetOutFormat(canFormat);
   //conv.SetOptions("O", conv.OUTOPTIONS);
 
-  OBMol mol;
   ifstream ifs;
 
-  vector<pair<string, OBMol> > known_fragments = LoadFragments();
+  LoadFragments();
 
   for (int i = 1; i < argc; i++) {
     cerr << "Reading file " << argv[i] << endl;
@@ -98,7 +120,22 @@ int main(int argc,char *argv[]) {
 
 
     while (ifs.peek() != EOF && ifs.good()) {
+      OBMol mol;
       conv.Read(&mol, &ifs);
+
+      OBBitVec vdone; // Atoms that are done, need no further manipulation.
+      OBBitVec vfrag; // Atoms that are part of a fragment found in the database.
+      // These atoms have coordinates, but the fragment still has
+      // to be rotated and translated.
+      vector3 molvec, moldir;
+      vector<pair<OBSmartsPattern*, vector<vector3 > > >::iterator i;
+      vector<vector<int> >::iterator j;
+      vector<int>::iterator k, k2, k3;
+      vector<vector3>::iterator l;
+      vector<vector<int> > mlist; // match list for fragments
+
+      // Trigger hybridisation perception now so it will be copied to workMol
+      mol.GetFirstAtom()->GetHyb();
 
       // Copy to a working molecule
       OBMol workMol = mol;
@@ -120,17 +157,13 @@ int main(int argc,char *argv[]) {
       workMol.SetHybridizationPerceived();
 
       // Get fragments using Copy Substructure
-      int size = mol.NumAtoms();
-      OBBitVec atomsToCopy(size);
-      for (unsigned int i = 1; i <= size; ++i) {
-        OBAtom* atom = mol.GetAtom(i);
+      OBBitVec atomsToCopy;
+      FOR_ATOMS_OF_MOL(atom, mol) {
         atomsToCopy.SetBitOn(atom->GetIdx());
       }
 
-      size = mol.NumBonds();
-      OBBitVec bondsToExclude(size);
-      for (unsigned int i = 0; i < size; ++i) {
-        OBBond* bond = mol.GetBond(i);
+      OBBitVec bondsToExclude;
+      FOR_BONDS_OF_MOL(bond, mol) {
         if (bond->IsRotor()) {
           bondsToExclude.SetBitOn(bond->GetIdx());
         }
@@ -141,68 +174,56 @@ int main(int argc,char *argv[]) {
       // Copies each disconnected fragment as a separate
       vector<OBMol> fragments = mol_copy.Separate(); 
 
-      OBBitVec vfrag(mol.NumAtoms()); // Is the atoms in fragment?
-      cout << "Original: " << conv.WriteString(&mol, true) << endl;
+      cout << "Original Molecule: " << conv.WriteString(&mol, true) << endl;
 
-      // Need to implement skip or something here
+      // Need to implement skip here
 
       // Loop through the fragments and assign the coordinates
-      for (unsigned int i = 0; i < fragments.size(); ++i) {
-        string fragment_smiles = conv.WriteString(&fragments[i], true);
-
-        // need better search method
-        vector<pair<string, OBMol> >::iterator f;
-        for(f = known_fragments.begin(); f != known_fragments.end(); f++) {
-          if((*f).first == fragment_smiles) {
-            cout << "Found: " << fragment_smiles << endl;
-
-            // This search may be omitted?
-            OBSmartsPattern sp;
-            sp.Init(fragment_smiles);
-            sp.Match(mol);
-
-            vector<vector<int> > mlist; // match list for fragments
-            mlist = sp.GetUMapList();
-
-            vector<vector<int> >::iterator j;
-            for (j = mlist.begin();j != mlist.end();++j) { // for all matches
-              bool alreadydone = false;
-              vector<int>::iterator k, k2;
-              for (k = j->begin(); k != j->end(); ++k) {
-                if (vfrag.BitIsSet(*k)) {
-                  alreadydone = true;
-                  break;
-                }
+      for (i = known_fragments.begin(); i != known_fragments.end(); ++i) {
+        if (i->first != NULL && i->first->Match(mol)) {
+          mlist = i->first->GetUMapList();
+          cerr << i->first->GetSMARTS() << " matched " << mlist.size() << " times" << endl;
+          for (j = mlist.begin(); j != mlist.end(); ++j) {
+            int alreadydone = 0;
+            int match_idx = 0;
+            for (k = j->begin(); k != j->end(); ++k)
+              if (vfrag.BitIsSet(*k)) {
+                alreadydone += 1;
+                if (alreadydone > 1) break;
+                match_idx = *k;
               }
-              if (alreadydone) continue;
+            if (alreadydone > 1) continue;
+            cerr << "process!" << endl;
 
-              int counter;
-              for (k = j->begin(), counter=1; k != j->end(); ++k, ++counter) {
-                OBAtom *atom = workMol.GetAtom(*k);
-                OBAtom *atom2 = (*f).second.GetAtom(counter);
-                cout << "atom: " << atom->GetAtomicNum() << " " << atom2->GetAtomicNum() << endl;
-                atom->SetVector(atom2->GetVector()); // is this ok?
-                vfrag.SetBitOn(*k); // flag for done
-              }
-              int index2;
-              for (k = j->begin(); k != j->end(); ++k) {
-                OBAtom *atom1 = mol.GetAtom(*k);
+            for (k = j->begin(); k != j->end(); ++k)
+              vfrag.SetBitOn(*k);
 
-                for (k2 = j->begin(); k2 != j->end(); ++k2) {
-                  index2 = *k2;
-                  OBAtom *atom2 = mol.GetAtom(index2);
-                  OBBond *bond = atom1->GetBond(atom2);
 
-                  if (bond != NULL) {
-                    workMol.AddBond(*bond);
-                  }
+            // set coordinates for atoms
+            int counter;
+            for (k = j->begin(), counter=0; k != j->end(); ++k, ++counter) {
+              OBAtom *atom = workMol.GetAtom(*k);
+              atom->SetVector(i->second[counter]);
+            }
+
+            // add the bonds for the fragment
+            int index2;
+            for (k = j->begin(); k != j->end(); ++k) {
+              OBAtom *atom1 = mol.GetAtom(*k);
+              for (k2 = j->begin(); k2 != j->end(); ++k2) {
+                index2 = *k2;
+                OBAtom *atom2 = mol.GetAtom(index2);
+                OBBond *bond = atom1->GetBond(atom2);
+                if (bond != NULL) {
+                  workMol.AddBond(*bond);
                 }
               }
             }
           }
         }
       }
-      OBBitVec vdone;
+
+      // iterate over all atoms to place them in 3D space
       FOR_DFS_OF_MOL (a, mol) {
         if (vdone.BitIsSet(a->GetIdx())) // continue if the atom is already added
           continue;
@@ -229,7 +250,6 @@ int main(int argc,char *argv[]) {
 
         // If this atom is not a part of a fragment
         // get the position for the new atom, this is done with GetNewBondVector
-        vector3 molvec, moldir;
         if (prev != NULL) {
           int bondType = a->GetBond(prev)->GetBO();
           if (a->GetBond(prev)->IsAromatic())
