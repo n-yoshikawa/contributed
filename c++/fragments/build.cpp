@@ -75,7 +75,7 @@ void LoadFragments() {
         obErrorLog.ThrowError(__FUNCTION__, " Could not parse SMARTS from contribution data file", obInfo);
       }
     } else if (vs.size() == 3) { // XYZ coordinates
-      vector3 coord(atof(vs[0].c_str()), atof(vs[0].c_str()), atof(vs[0].c_str()));
+      vector3 coord(atof(vs[0].c_str()), atof(vs[1].c_str()), atof(vs[2].c_str()));
       coords.push_back(coord);
     } else {
       cerr << "Unexpected input" << endl;
@@ -174,8 +174,6 @@ int main(int argc,char *argv[]) {
       // Copies each disconnected fragment as a separate
       vector<OBMol> fragments = mol_copy.Separate(); 
 
-      cout << "Original Molecule: " << conv.WriteString(&mol, true) << endl;
-
       // Need to implement skip here
 
       // Loop through the fragments and assign the coordinates
@@ -185,12 +183,10 @@ int main(int argc,char *argv[]) {
           cerr << i->first->GetSMARTS() << " matched " << mlist.size() << " times" << endl;
           for (j = mlist.begin(); j != mlist.end(); ++j) {
             int alreadydone = 0;
-            int match_idx = 0;
             for (k = j->begin(); k != j->end(); ++k)
               if (vfrag.BitIsSet(*k)) {
                 alreadydone += 1;
                 if (alreadydone > 1) break;
-                match_idx = *k;
               }
             if (alreadydone > 1) continue;
             cerr << "process!" << endl;
@@ -204,6 +200,9 @@ int main(int argc,char *argv[]) {
             for (k = j->begin(), counter=0; k != j->end(); ++k, ++counter) {
               OBAtom *atom = workMol.GetAtom(*k);
               atom->SetVector(i->second[counter]);
+              cerr << i->second[counter].GetX() << " "
+                   << i->second[counter].GetY() << " "
+                   << i->second[counter].GetZ() << endl;
             }
 
             // add the bonds for the fragment
@@ -225,8 +224,11 @@ int main(int argc,char *argv[]) {
 
       // iterate over all atoms to place them in 3D space
       FOR_DFS_OF_MOL (a, mol) {
-        if (vdone.BitIsSet(a->GetIdx())) // continue if the atom is already added
+        cerr << "process atom " << a->GetIdx() << endl;
+        if (vdone.BitIsSet(a->GetIdx())) {// continue if the atom is already added
+          cerr << "atom " << a->GetIdx() << " is already added" << endl;
           continue;
+        }
         
         // find an atom connected to the current atom that is already added
         OBAtom *prev = NULL;
@@ -234,9 +236,9 @@ int main(int argc,char *argv[]) {
           if (vdone.BitIsSet(nbr->GetIdx()))
             prev = &*nbr;
         }
-
         if (vfrag.BitIsSet(a->GetIdx())) { // Is this atom part of a fragment?
           if (prev != NULL) { // if we have a previous atom, translate/rotate the fragment and connect it
+            cerr << "connect " << prev->GetIdx() << " " << a->GetIdx() << endl;
             OBBuilder::Connect(workMol, prev->GetIdx(), a->GetIdx(), mol.GetBond(prev, &*a)->GetBondOrder());
             // set the correct bond order
             int bondOrder = mol.GetBond(prev->GetIdx(), a->GetIdx())->GetBondOrder();
@@ -247,6 +249,8 @@ int main(int argc,char *argv[]) {
 
           continue;
         }
+
+        cerr << "Something is wrong" << endl;
 
         // If this atom is not a part of a fragment
         // get the position for the new atom, this is done with GetNewBondVector
@@ -279,7 +283,6 @@ int main(int argc,char *argv[]) {
           OBBond *bond = a->GetBond(prev); // from mol
           workMol.AddBond(*bond);
         }
-
       }
 
       // Make sure we keep the bond indexes the same
@@ -309,6 +312,7 @@ int main(int argc,char *argv[]) {
       */
 
       mol = workMol;
+      mol.AddHydrogens();
       mol.SetChiralityPerceived();
       mol.SetDimension(3);
 
@@ -322,10 +326,10 @@ int main(int argc,char *argv[]) {
       }
       if(isNanExist)
         obErrorLog.ThrowError(__FUNCTION__, "There exists NaN in calculated coordinates.", obWarning);
-    OBConversion conv2;
-    conv2.SetOutFormat("sdf");
-    cout << conv2.WriteString(&mol, true) << endl;
-    }
 
+      OBConversion conv2;
+      conv2.SetOutFormat("sdf");
+      cout << conv2.WriteString(&mol, true) << endl;
+    }
   }
 }
