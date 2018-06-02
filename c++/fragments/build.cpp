@@ -173,48 +173,58 @@ int main(int argc,char *argv[]) {
       mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
       // Copies each disconnected fragment as a separate
       vector<OBMol> fragments = mol_copy.Separate(); 
+      vector<string> fragment_smiles;
+      vector<OBMol>::iterator f;
+      for(f = fragments.begin(); f != fragments.end(); ++f) {
+        fragment_smiles.push_back(conv.WriteString(&(*f), true));
+      }
 
       // Need to implement skip here
 
       // Loop through the fragments and assign the coordinates
       for (i = known_fragments.begin(); i != known_fragments.end(); ++i) {
-        if (i->first != NULL && i->first->Match(mol)) {
-          mlist = i->first->GetUMapList();
-          cerr << i->first->GetSMARTS() << " matched " << mlist.size() << " times" << endl;
-          for (j = mlist.begin(); j != mlist.end(); ++j) {
-            int alreadydone = 0;
-            for (k = j->begin(); k != j->end(); ++k)
-              if (vfrag.BitIsSet(*k)) {
-                alreadydone += 1;
-                if (alreadydone > 1) break;
-              }
-            if (alreadydone > 1) continue;
-            cerr << "process!" << endl;
+        vector<string>::iterator f;
+        for(f = fragment_smiles.begin(); f != fragment_smiles.end(); ++f) {
+          if(*f == i->first->GetSMARTS()) {
+            if (i->first != NULL && i->first->Match(mol)) {
+              mlist = i->first->GetUMapList();
+              cerr << i->first->GetSMARTS() << " matched " << mlist.size() << " times" << endl;
+              for (j = mlist.begin(); j != mlist.end(); ++j) {
+                int alreadydone = 0;
+                for (k = j->begin(); k != j->end(); ++k)
+                  if (vfrag.BitIsSet(*k)) {
+                    alreadydone += 1;
+                    if (alreadydone > 1) break;
+                  }
+                if (alreadydone > 1) continue;
+                cerr << "process!" << endl;
 
-            for (k = j->begin(); k != j->end(); ++k)
-              vfrag.SetBitOn(*k);
+                for (k = j->begin(); k != j->end(); ++k)
+                  vfrag.SetBitOn(*k);
 
 
-            // set coordinates for atoms
-            int counter;
-            for (k = j->begin(), counter=0; k != j->end(); ++k, ++counter) {
-              OBAtom *atom = workMol.GetAtom(*k);
-              atom->SetVector(i->second[counter]);
-              cerr << i->second[counter].GetX() << " "
-                   << i->second[counter].GetY() << " "
-                   << i->second[counter].GetZ() << endl;
-            }
+                // set coordinates for atoms
+                int counter;
+                for (k = j->begin(), counter=0; k != j->end(); ++k, ++counter) {
+                  OBAtom *atom = workMol.GetAtom(*k);
+                  atom->SetVector(i->second[counter]);
+                  cerr << i->second[counter].GetX() << " "
+                    << i->second[counter].GetY() << " "
+                    << i->second[counter].GetZ() << endl;
+                }
 
-            // add the bonds for the fragment
-            int index2;
-            for (k = j->begin(); k != j->end(); ++k) {
-              OBAtom *atom1 = mol.GetAtom(*k);
-              for (k2 = j->begin(); k2 != j->end(); ++k2) {
-                index2 = *k2;
-                OBAtom *atom2 = mol.GetAtom(index2);
-                OBBond *bond = atom1->GetBond(atom2);
-                if (bond != NULL) {
-                  workMol.AddBond(*bond);
+                // add the bonds for the fragment
+                int index2;
+                for (k = j->begin(); k != j->end(); ++k) {
+                  OBAtom *atom1 = mol.GetAtom(*k);
+                  for (k2 = j->begin(); k2 != j->end(); ++k2) {
+                    index2 = *k2;
+                    OBAtom *atom2 = mol.GetAtom(index2);
+                    OBBond *bond = atom1->GetBond(atom2);
+                    if (bond != NULL) {
+                      workMol.AddBond(*bond);
+                    }
+                  }
                 }
               }
             }
